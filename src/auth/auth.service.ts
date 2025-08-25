@@ -24,7 +24,6 @@ export class AuthService {
 
   async signin(SignInDto) {
 
-    // TODO: Implement your signin logic here, e.g., generating JWT tokens
     // Deconstruct the DTO
     const { email, password } = SignInDto;
 

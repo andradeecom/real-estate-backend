@@ -4,7 +4,6 @@ import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
-// TODO: Add password hashing and validation logic
 
 @Injectable()
 export class TenantService {
@@ -82,6 +81,8 @@ export class TenantService {
     });
 
     if (!foundTenant) throw new NotFoundException(`Tenant with ID ${id} not found`); // returns 404 Not Found
+
+    // TODO: Handle name already exists error
 
     // update tenant with provided fields
     const updatedTenant = await this.prisma.tenant.update({

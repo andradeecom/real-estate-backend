@@ -14,7 +14,7 @@ describe('TenantService', () => {
         update: jest.fn(),
         delete: jest.fn(),
       },
-    }
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TenantService,
@@ -81,7 +81,9 @@ describe('TenantService', () => {
 
     it('should throw ConflictException if tenant already exists', async () => {
       mockPrisma.tenant.findUnique.mockResolvedValue({ id: 'existingTenant' });
-      await expect(service.create(createTenantDto)).rejects.toThrow('Tenant already exists');
+      await expect(service.create(createTenantDto)).rejects.toThrow(
+        'Tenant already exists',
+      );
       expect(mockPrisma.tenant.findUnique).toHaveBeenCalledWith({
         where: { name: createTenantDto.name },
       });

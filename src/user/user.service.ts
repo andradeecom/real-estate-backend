@@ -1,10 +1,15 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
-import * as bcrypt from 'bcrypt'; // Import bcrypt for password hashing
-import { ConfigService } from '@nestjs/config'; // Import ConfigService to access environment variables
+import * as bcrypt from 'bcrypt';
+import { USER_PUBLIC_SELECT, USER_AUTH_SELECT } from './projections/user.projection';
+import { Prisma, $Enums } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 
 
 @Injectable()
@@ -25,60 +30,34 @@ export class UserService {
   }
 
 
-  async create(createUserDto: CreateUserDto) {
+  async create(input: CreateUserDto) {
+    /**
+    * - Validate user input (handled by class-validator)
+    * - Check if user already exists
+    * - Hash password
+    * - Create user
+    */
+
+    // Check if user already exists
     const isUserExists = await this.prisma.user.findUnique({
-      where: {
-        email: createUserDto.email,
+      where: { email: input.email },
+    });
+
+    if (isUserExists) throw new ConflictException('User already exists');
+
+    // Hash password
+    const hashedPassword = await this.hashPassword(input.password);
+
+    const { email, full_name, role, tenant_id } = input;
+
+    return await this.prisma.user.create({
+      data: {
+        email,
+        full_name,
+        role,
+        tenant_id,
+        password_hash: hashedPassword,
       },
-    });
-
-    if (isUserExists) throw new ConflictException('User already exists'); // returns 409 Conflict
-
-    const hashedPassword = await bcrypt.hash(createUserDto.password, this.saltOrRounds);
-
-    const { email, full_name, role, tenant_id } = createUserDto;
-    const dbUser: Prisma.UserCreateInput = {
-      email: email,
-      password_hash: hashedPassword,
-    };
-
-    // Include only if they exist, handling typescript's strict null checks
-    if (full_name) dbUser.full_name = full_name;
-    if (role) dbUser.role = role;
-    if (tenant_id) {
-      dbUser.tenant = {
-        connect: { id: tenant_id },
-      };
-    }
-
-
-    return this.prisma.user.create({
-      data: dbUser,
-      select: {
-        id: true,
-        email: true,
-        full_name: true,
-        role: true,
-        tenant_id: true, // Optional, if user is created within a tenant context
-      },
-    });
-  }
-
-  findAll() {
-    // Returns array of User objects --> User[]
-    return this.prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        full_name: true,
-        role: true,
-      }
-    });
-  }
-
-  async findOne(id: string) {
-    const foundUser = await this.prisma.user.findUnique({
-      where: { id },
       select: {
         id: true,
         email: true,
@@ -87,8 +66,21 @@ export class UserService {
         tenant_id: true,
       },
     });
+  }
 
-    if (!foundUser) throw new NotFoundException('User not found'); // returns 404 Not Found
+  async findAll() {
+    return await this.prisma.user.findMany({
+      select: USER_PUBLIC_SELECT,
+    });
+  }
+
+  async findOne(id: string) {
+    const foundUser = await this.prisma.user.findUnique({
+      where: { id },
+      select: USER_PUBLIC_SELECT,
+    });
+
+    if (!foundUser) throw new NotFoundException('User not found');
 
     return foundUser;
   }
@@ -96,34 +88,44 @@ export class UserService {
   async findByEmail(email: string) {
     const foundUser = await this.prisma.user.findUnique({
       where: { email },
-      select: {
-        id: true,
-        email: true,
-        full_name: true,
-        role: true,
-        tenant_id: true, // Optional, if user is created within a tenant context
-        password_hash: true,
-      },
+      select: USER_AUTH_SELECT,
     });
-    if (!foundUser) throw new NotFoundException('User not found'); // returns 404 Not Found
+    if (!foundUser) throw new NotFoundException('User not found');
     return foundUser;
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto) {
-
+  async update(id: string, input: UpdateUserDto) {
     // Check if at least one field is provided for update
-    if (!updateUserDto.email && !updateUserDto.full_name && !updateUserDto.role && !updateUserDto.tenant_id) {
-      throw new ConflictException('No fields to update'); // returns 409 Conflict
+    if (
+      input.email === undefined &&
+      input.full_name === undefined &&
+      input.role === undefined &&
+      input.tenant_id === undefined
+    ) {
+      throw new ConflictException('No fields to update');
+    }
+
+    // If email is being updated, check if it already exists
+    if (input.email) {
+      const isUserExists = await this.prisma.user.findUnique({
+        where: {
+          email: input.email,
+        },
+      });
+
+      if (isUserExists) {
+        throw new ConflictException(`User email '${input.email}' already exists`);
+      }
     }
 
     // If email is being updated, check it doesn't already exist
-    if (updateUserDto.email) {
+    if (input.email) {
       const existingUserEmail = await this.prisma.user.findUnique({
-        where: { email: updateUserDto.email },
+        where: { email: input.email },
       })
 
       if (existingUserEmail) {
-        throw new ConflictException(`User email '${updateUserDto.email}' already exists`);
+        throw new ConflictException(`User email '${input.email}' already exists`);
       }
     }
 
@@ -137,7 +139,7 @@ export class UserService {
     // Update user with provided fields
     const updatedUser = await this.prisma.user.update({
       where: { id },
-      data: updateUserDto,
+      data: input,
       select: {
         id: true,
         email: true,
@@ -147,44 +149,39 @@ export class UserService {
       },
     });
 
-    // TODO: Use response interceptors wrapping the responses with codes and messages for all successful reaponses
-    return {
-      code: 200,
-      message: 'User updated successfully',
-      data: updatedUser
-    }
+    return updatedUser;
   }
 
   async remove(id: string) {
     // Check if user exists
     const foundUser = await this.prisma.user.findUnique({
       where: { id },
+      select: { id: true },
     });
 
-    if (!foundUser) throw new NotFoundException('User not found'); // returns 404 Not Found
+    if (!foundUser) throw new NotFoundException('User not found');
 
     // Delete user
     const deletedUser = await this.prisma.user.delete({
       where: { id },
-      select: {
-        id: true,
-        email: true,
-        full_name: true,
-        role: true,
-      },
+      select: USER_PUBLIC_SELECT,
     });
 
-    // TODO: Use response interceptors for this
-    return {
-      code: 200,
-      message: 'User deleted successfully',
-      data: deletedUser,
+    return deletedUser;
+  }
+
+  async hashPassword(password: string) {
+
+    const saltOrRounds = Number(process.env.BCRYPT_SALT_ROUNDS);
+    if (isNaN(saltOrRounds) || saltOrRounds < 4 || saltOrRounds > 15) {
+      throw new Error(
+        `Invalid BCRYPT_SALT_ROUNDS value: ${saltOrRounds}. It must be a positive integer between 4 and 15.`,
+      );
     }
+    return await bcrypt.hash(password, saltOrRounds);
   }
 
-  async comparePassword(plainTextPassword: string, hashedPassword: string) {
-    // Compare plain text password with hashed password
-    return bcrypt.compare(plainTextPassword, hashedPassword);
+  async verifyPassword(plainTextPassword: string, hashedPassword: string) {
+    return await bcrypt.compare(plainTextPassword, hashedPassword);
   }
-
 }

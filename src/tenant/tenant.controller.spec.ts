@@ -8,7 +8,7 @@ describe('TenantController', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      imports: [PrismaModule], 
+      imports: [PrismaModule],
       controllers: [TenantController],
       providers: [TenantService],
     }).compile();

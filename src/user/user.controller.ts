@@ -5,11 +5,17 @@ import {
   Get,
   Param,
   Put,
-  Delete
+  Delete,
+  UseGuards,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ResponseMessage } from 'src/common/decorators/response-message.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
+import { Role } from './user-roles';
+import { AuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
 import { ParseUUIDPipe } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 
@@ -17,36 +23,40 @@ import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) { }
-  private readonly uuidPipe = new ParseUUIDPipe();
 
   @Post()
-  @ApiCreatedResponse({ description: 'User created successfully' })
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.userService.create(createUserDto);
+  @ResponseMessage('User created successfully')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  create(@Body() input: CreateUserDto) {
+    return this.userService.create(input);
   }
 
   @Get()
-  @ApiOkResponse({ description: 'List of users retrieved successfully' })
+  @ResponseMessage('Users fetched successfully')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
   findAll() {
     return this.userService.findAll();
   }
 
   @Get(':id')
-  @ApiOkResponse({ description: 'User retrieved successfully' })
-  findOne(@Param('id', new ParseUUIDPipe()) id: string) {
+  @ResponseMessage('User fetched successfully')
+  findOne(@Param('id') id: string) {
     return this.userService.findOne(id);
   }
 
   @Put(':id')
-  @ApiOkResponse({ description: 'User updated successfully' })
-  update(@Param('id', new ParseUUIDPipe()) id: string, @Body() updateUserDto: UpdateUserDto) {
-    // Should I add the code message here instead of service ?
-    return this.userService.update(id, updateUserDto);
+  @ResponseMessage('User updated successfully')
+  update(@Param('id') id: string, @Body() input: UpdateUserDto) {
+    return this.userService.update(id, input);
   }
 
   @Delete(':id')
-  @ApiOkResponse({ description: 'User deleted successfully' })
-  remove(@Param('id', new ParseUUIDPipe()) id: string) {
+  @ResponseMessage('User deleted successfully')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  remove(@Param('id') id: string) {
     return this.userService.remove(id);
   }
 }

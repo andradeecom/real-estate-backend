@@ -13,9 +13,10 @@ model User {
   password_hash String
   full_name     String?
   role          Role     @default(CLIENT)
-  created_at    DateTime @default(now())
   tenant_id     String?
+  created_at    DateTime @default(now())
   updated_at    DateTime @default(now()) @updatedAt
+  
   tenant        Tenant?  @relation("TenantUsers", fields: [tenant_id], references: [id])
 }
 
